@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "openSHMEM.h"
+#include "my_shmem.h"
 
-int main(void) {
+int main(int argc, char** argv) {
     int pe, size;
 
-    shmem_init();
+    shmem_init(argc,argv);
     pe = shmem_my_pe();
     size = shmem_n_pes();
 
