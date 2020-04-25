@@ -95,4 +95,36 @@ void shmem_quiet(void){
 
 }
 
+void shmem_barrier_all(void){
+  int my_pe = shmem_my_pe();
+  key_t barrierKey = rand() % 10000;
+  int pes = shmem_n_pes();
+  int shmBarrierId = shmget(barrierKey, pes*sizeof(int),0666|IPC_CREAT);
+  int* sharedBarrier = (int *) malloc(pes*sizeof(int));
+  sharedBarrier = shmat(shmBarrierId, NULL, 0);
+  int* cur = &sharedBarrier[my_pe];
+  *cur = 0;
+  if(my_pe == 0){
+    int release = 0;
+    for(int i=1;i<pes;i++){
+      int remote_var = 0;
+      while(remote_var == 0){
+        shmem_int_get(&remote_var, cur, 1, i);
+      }
+    }
+    for(int i=1;i<pes;i++){
+      shmem_int_put(cur, &release, 1, i);
+      sleep(0.5);
+    }
+    shmem_quiet();
+    shmdt(sharedBarrier);
+  }else{
+    *cur = 1;
+    while(*cur != 0);
+    //printf("%d complete.\n",my_pe);
+    shmdt(sharedBarrier);
+  }
+  shmctl(shmBarrierId, IPC_RMID, NULL);  
+}
+
 #endif

@@ -1,15 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <shmem.h>
+#include "my_shmem.h"
 
-int main(void) {
+int main(int argc, char* argv[]) {
     int pe, size;
     int * token;
     int target;
     int val = 1;
 
-    shmem_init();
+    shmem_init(argc, argv);
 
     token = (int *)shmem_malloc(sizeof(int));
     pe = shmem_my_pe();
