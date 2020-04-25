@@ -11,7 +11,7 @@
 #define OPENSHMEM_H
 
 //initilize the openshmem
-void shmem_init(int argc, char** argv){
+void shmem_init(int argc, char* argv[]){
   //MPI_Init();
   MPI_Init(&argc, &argv);
 }
