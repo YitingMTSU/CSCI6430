@@ -1,18 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <shmem.h>
+#include "my_shmem.h"
 
-int main(void) {
+int main(int argc, char* argv[]) {
     int pe, size;
     int i = 0;
     int * sync;
     
-    shmem_init();
+    shmem_init(argc, argv);
     pe = shmem_my_pe();
     size = shmem_n_pes();
 
     sync = (int *)shmem_malloc(sizeof(int));
+    //printf("malloc complete, PE:%ld\n",pe);
     *sync = 0;
 
     printf("%d: entering barrier\n", pe);
