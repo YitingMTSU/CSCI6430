@@ -14,13 +14,26 @@
 #ifndef OPENSHMEM_H
 #define OPENSHMEM_H
 
-int intKeyVal = 12345;
-int shmInt_id;
-int* sharedInt;
+//max shared block number
+#define MAX_BLOCK  100
+//manage the shared memory
+struct keySet{
+  int keyV[MAX_BLOCK];
+  int shm_id[MAX_BLOCK];
+  void* shared[MAX_BLOCK];
+  int block_num;
+};
+
+struct keySet keyset;
 
 //initilize the openshmem
 void shmem_init(int argc, char* argv[]){
   //MPI_Init();
+  keyset.block_num = 0;
+  for(int i=0;i<MAX_BLOCK;i++){
+    keyset.keyV[i] = i^2;
+  }
+
   MPI_Init(&argc, &argv);
 }
 
@@ -40,43 +53,63 @@ int shmem_my_pe(){
 
 //finalize the openshmem
 void shmem_finalize(){
-  shmdt(sharedInt);
-  shmctl(shmInt_id, IPC_RMID, NULL);
+  for(int i=0;i<keyset.block_num;i++){
+    void* shared = keyset.shared[i];
+    int shm_id = keyset.shm_id[i];
+    shmdt(shared);
+    shmctl(shm_id, IPC_RMID, NULL);
+  }
   MPI_Finalize();
 }
 
 //malloc the shared memory for integer type
-int *shmem_malloc(size_t size){
-  key_t intKey = intKeyVal;
+void* shmem_malloc(size_t size){
+  int ind = keyset.block_num;
+  keyset.block_num++;
+
+  key_t intKey = keyset.keyV[ind];
 
   int pes = shmem_n_pes();
 
   //int shmInt_id;
   
-  shmInt_id = shmget(intKey, pes*size, 0666|IPC_CREAT);
-  if(shmInt_id == -1){
+  keyset.shm_id[ind] = shmget(intKey, pes*size, 0666|IPC_CREAT);
+  int id = keyset.shm_id[ind];
+  if(id == -1){
     perror("Shared memory failed:");
-    return (int*)NULL;
+    return NULL;
   }
 
   //malloc the same size memory locally
-  //int* sharedInt;
-  //shmdt(shared);
-  sharedInt = (int *)malloc(pes*size);
-  sharedInt = shmat(shmInt_id, NULL, 0);
+  keyset.shared[ind] = malloc(pes*size);
+  keyset.shared[ind] = shmat(id, NULL, 0);
 
+  void* p = keyset.shared[ind];
   //shmdt(shared);
   int pe = shmem_my_pe();
-  return &sharedInt[pe];
+  return (p + pe*size);
 }
 
 void shmem_int_get(int* target, int* source, int len, int pe){
   int my_pe = shmem_my_pe();
   if(my_pe == pe){
-    *target = *source;
+    if(len == 1){
+      *target = *source;
+    }else{
+      for(int i=0;i<len;i++){
+        *(target + i) = *(source + i);
+      }
+    }
   }else{
     int dis = pe - my_pe;
-    *target = *(source + dis);
+    int startInd = dis*len;
+    if(len == 1){ 
+      *target = *(source + dis);
+    }else{
+      for(int i=0;i<len;i++){
+        *(target +i) = *(source + i);
+      }
+    }
   }
   
 }
@@ -84,15 +117,28 @@ void shmem_int_get(int* target, int* source, int len, int pe){
 void shmem_int_put(int* source, int* target, int len, int pe){
   int my_pe = shmem_my_pe();
   if(my_pe == pe){
-    *source = *target;
+    if(len == 1){
+      *source = *target;
+    }else{
+      for(int i=0;i<len;i++){
+        *(source + i) = *(target + i);
+      }
+    }
   }else{
     int dis = pe - my_pe;
-    *(source + dis) = *target;
+    int startInd = dis*len;
+    if(len == 1){
+      *(source + dis) = *target;
+    }else{
+      for(int i=0;i<len;i++){
+        *(source + i) = *(target + i);
+      }
+    }
   }
 }
 
 void shmem_quiet(void){
-
+  //no idea what to do here
 }
 
 void shmem_barrier_all(void){
