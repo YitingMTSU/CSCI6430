@@ -8,11 +8,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
-
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 #include <sys/shm.h>
 
 #ifndef OPENSHMEM_H
 #define OPENSHMEM_H
+
+
+#define PORT 3050
 
 //max shared block number
 #define MAX_BLOCK  100
@@ -31,7 +36,7 @@ void shmem_init(int argc, char* argv[]){
   //MPI_Init();
   keyset.block_num = 0;
   for(int i=0;i<MAX_BLOCK;i++){
-    keyset.keyV[i] = i^2;
+    keyset.keyV[i] = i + 1000;
   }
 
   MPI_Init(&argc, &argv);
@@ -62,7 +67,7 @@ void shmem_finalize(){
   MPI_Finalize();
 }
 
-//malloc the shared memory for integer type
+//malloc the shared memory
 void* shmem_malloc(size_t size){
   int ind = keyset.block_num;
   keyset.block_num++;
@@ -143,7 +148,7 @@ void shmem_quiet(void){
 
 void shmem_barrier_all(void){
   int my_pe = shmem_my_pe();
-  key_t barrierKey = rand() % 10000;
+  key_t barrierKey = 999;
   int pes = shmem_n_pes();
   int shmBarrierId = shmget(barrierKey, pes*sizeof(int),0666|IPC_CREAT);
   int* sharedBarrier = (int *) malloc(pes*sizeof(int));
@@ -171,6 +176,138 @@ void shmem_barrier_all(void){
     shmdt(sharedBarrier);
   }
   shmctl(shmBarrierId, IPC_RMID, NULL);  
+}
+
+void shmem_putmem(void *dest, void *source, size_t len, int pe){
+  int my_pe = shmem_my_pe();
+  int num = len / sizeof(source);
+  void* startInd = (dest + (pe - my_pe) * num);
+  char* s = (char *) startInd;
+  char* t = (char *) source;
+  //put the memory byte by byte
+  for(int i=0;i<len;i++){
+    *(s + i) = *(t + i);
+  }
+}
+
+
+void shmem_getmem(void *dest, void *source, size_t len, int pe){
+  int my_pe = shmem_my_pe();
+  int num = len / sizeof(source);
+  void* startInd = (source + (pe - my_pe) * num);
+  char* s = (char *) startInd;
+  char* t = (char *) dest;
+  //get the memory byte by byte
+  for(int i=0;i<len;i++){
+    *(t + i) = *(s + i);
+  }
+}
+
+void shmem_free(void *ptr){
+  ptr = NULL;
+}
+
+
+void shmem_sync_all(void){
+  int my_pe = shmem_my_pe();
+  int pes = shmem_n_pes();
+  if(my_pe == 0){
+    //serve as server side
+    int sockfd, new_socket;
+    struct sockaddr_in server_address;
+    int opt = 1;
+    int addrlen = sizeof(struct sockaddr_in);
+    char buffer[32];
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+      perror("socket failed");
+      return;
+    }
+    
+    // optional
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+      perror("sockopt failed");
+      return;
+    }
+
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    server_address.sin_port = htons(PORT);
+
+    if (bind(sockfd, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) {
+      perror("bind failed");
+      return;
+    }
+
+    if (listen(sockfd, 10) < 0) {
+      perror("listen failed:");
+      return;
+    }
+
+    //only listen pes - 1
+    for (int i=0;i<pes-1;i++) {
+      if ((new_socket = accept(sockfd, (struct sockaddr *) &server_address, 
+        (socklen_t *) &addrlen)) < 0) {
+        perror("accept failed: ");
+        return;
+      }
+      //read the new data  
+      read(new_socket, buffer, 32);
+      printf("Client said: %s\n", buffer);
+      close(new_socket);
+    }
+
+  }else{
+    //serve as client side
+    int sockfd;
+    struct sockaddr_in server_address;
+    int addrlen = sizeof(struct sockaddr_in);
+    char buffer[32];
+    char address[32] = "127.0.0.1";
+    
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("socket failed");
+        return;
+    }
+    
+    memset(&server_address, 0, sizeof(server_address));
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = inet_addr(address);
+    server_address.sin_port = htons(PORT);
+
+    if (connect(sockfd, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) {
+        perror("Could not connect to host: ");
+        return;
+    }
+    
+    sprintf(buffer, "Hello, this is pe %d", my_pe);
+    send(sockfd, buffer, strlen(buffer), 0);
+    close(sockfd);
+
+  }
+}
+
+void shmem_put_nbi(void *dest, void *source, size_t nelems, int pe){
+  int my_pe = shmem_my_pe();
+  int num = nelems / sizeof(source);
+  void* startInd = (dest + (pe - my_pe) * num);
+  char* s = (char *) startInd;
+  char* t = (char *) source;
+  //put the memory byte by byte
+  for(int i=0;i<nelems;i++){
+    *(s + i) = *(t + i);
+  }
+}
+
+void shmem_get_nbi(void *dest, void *source, size_t nelems, int pe){
+  int my_pe = shmem_my_pe();
+  int num = nelems / sizeof(source);
+  void* startInd = (source + (pe - my_pe) * num);
+  char* s = (char *) startInd;
+  char* t = (char *) dest;
+  //get the memory byte by byte
+  for(int i=0;i<nelems;i++){
+    *(t + i) = *(s + i);
+  }
 }
 
 #endif

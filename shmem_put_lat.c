@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <shmem.h>
+#include "my_shmem.h"
 #include <sys/time.h>
 
 #define ITER    10000
@@ -28,7 +28,7 @@ int main(int argc, char ** argv) {
         size_b = atoi(argv[1]);
     }
     
-    shmem_init();
+    shmem_init(argc, argv);
     pe = shmem_my_pe();
     size = shmem_n_pes();
     sbuf = (long *) shmem_malloc(size_b);

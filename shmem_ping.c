@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#include <shmem.h>
+#include "my_shmem.h"
 
 double timestamp()
 {
@@ -16,14 +16,14 @@ double timestamp()
     return retval;
 }
 
-int main(void)
+int main(int argc, char* argv[])
 {
     int my_pe, n_pes;
     int * ping;
     int i = 0, j = 0;
     double start, end;
     
-    shmem_init();
+    shmem_init(argc, argv);
     my_pe = shmem_my_pe();
     n_pes = shmem_n_pes();
 
